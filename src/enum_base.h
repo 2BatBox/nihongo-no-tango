@@ -63,4 +63,8 @@ struct EnumField {
 		return static_cast<size_t>(E::__SIZE);
 	}
 
+	void write(std::string& buf) const {
+		buf.append(to_cstr());
+	}
+
 };

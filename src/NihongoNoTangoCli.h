@@ -7,7 +7,10 @@
 struct NihongoNoTangoCli {
 
 	enum EnumMethod : unsigned {
-		KANJI,
+		READ_KANA,
+		WRITE_KANA,
+		READ_KANJI,
+		WRITE_KANJI,
 		TRANSLATION,
 		AUDIO,
 		__SIZE
@@ -16,7 +19,10 @@ struct NihongoNoTangoCli {
 	struct EnumMethodToCStr {
 		static const char* to_cstr(const EnumMethod& value) {
 			switch(value) {
-				case EnumMethod::KANJI: return "kanji";
+				case EnumMethod::READ_KANA: return "read-kana";
+				case EnumMethod::WRITE_KANA: return "write-kana";
+				case EnumMethod::READ_KANJI: return "read-kanji";
+				case EnumMethod::WRITE_KANJI: return "write-kanji";
 				case EnumMethod::TRANSLATION: return "trans";
 				case EnumMethod::AUDIO: return "audio";
 				default: return "[UNKNOWN]";
@@ -26,25 +32,43 @@ struct NihongoNoTangoCli {
 
 	using Method = EnumField<EnumMethod, EnumMethodToCStr>;
 
-	CliOption<unsigned> rounds = CliOption<unsigned>('r', "Rounds.");
-	CliOption<std::string> dic_file = CliOption<std::string>('d', "Dictionary file.");
+	unsigned pr = 1;
+	Option<size_t> rounds = Option<size_t>('r', "Rounds.", ++pr);
+	Option<std::string> dic_file = Option<std::string>('d', "Dictionary file.", ++pr);
+	OptionFlag with_translation = OptionFlag('t', "Show translation.", ++pr);
+	OptionFlag katakana = OptionFlag('k', "Katakana filter.", ++pr);
 
-	AppCli<Method> action;
+	AppCliMethod<Method> action;
 
 	NihongoNoTangoCli() {
-		action[EnumMethod::KANJI]
-			.description("赤い -> あかい")
-			.mandatory(rounds, dic_file);
+		action[EnumMethod::READ_KANA]
+			.desc("あかい + (voice '赤い')")
+			.mand(rounds, dic_file)
+			.opt(with_translation, katakana);
+
+		action[EnumMethod::WRITE_KANA]
+			.desc("(voice '赤い') -> あかい")
+			.mand(rounds, dic_file)
+			.opt(with_translation, katakana);
+
+		action[EnumMethod::READ_KANJI]
+			.desc("赤い + (voice '赤い')")
+			.mand(rounds, dic_file);
+
+		action[EnumMethod::WRITE_KANJI]
+			.desc("(voice '赤い') -> 赤い")
+			.mand(rounds, dic_file)
+			.opt(with_translation);
 
 		action[EnumMethod::TRANSLATION]
-			.description("красный -> あかい")
-			.mandatory(rounds, dic_file);
+			.desc("красный -> あかい")
+			.mand(rounds, dic_file);
 
 		action[EnumMethod::AUDIO]
-			.description("(voice '赤い') -> あかい")
-			.mandatory(rounds, dic_file);
+			.desc("(voice '赤い') -> あかい")
+			.mand(rounds, dic_file);
 
-		action.finilize();
+		action.finalize();
 	}
 
 	bool parse_args(int argc, char** argv) {
@@ -52,11 +76,11 @@ struct NihongoNoTangoCli {
 	}
 
 	bool validate() const {
-		return (not dic_file.value.empty()) && rounds.value > 0;
+		return (not dic_file.value().empty()) && rounds > 0;
 	}
 
-	void print_usage(FILE* out) {
-		action.print_usage(out);
+	void print_usage(FILE* out, const char* bin) {
+		action.print_usage(out, bin);
 	}
 
 	std::string options_string() const {
