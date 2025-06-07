@@ -6,7 +6,6 @@
 #include <vector>
 #include <algorithm>
 #include <random>
-#include <sstream>
 #include <locale>
 #include <codecvt>
 
@@ -73,21 +72,31 @@ public:
 		return err;
 	}
 
-	void do_read(const Record& rec, const String_t& str) {
-		printf("%s", to_basic_string(str).c_str());
-		if(_cli.with_translation.presented()) {
-			printf("  (%s)", to_basic_string(rec.translation).c_str());
+	String_t build_question(const Record& rec) const {
+		String_t question;
+		if(_cli.show_kanji.presented() && (not rec.kanji.empty())) {
+			question.append(rec.kanji);
+			question.push_back(U' ');
 		}
-		fflush(stdout);
-		String_t output;
-		read_line(stdin, output, true);
-		if(not _cli.with_translation.presented()) {
-			printf("(%s)\n", to_basic_string(rec.translation).c_str());
+
+		if(_cli.show_kana.presented()) {
+			question.append(rec.kana);
+			question.push_back(U' ');
 		}
-		if(rec.kanji.empty()) {
-			say(rec.kana);
-		} else {
-			say(rec.kanji);
+
+		if(_cli.show_translation.presented()) {
+			question.append(rec.translation);
+			question.push_back(U' ');
+		}
+		return question;
+	}
+
+	String_t build_reference(const Record& rec) const {
+		switch(_cli.answer.value().get()) {
+			case NihongoNoTangoCli::EnumAnswer::KANA: return rec.kana;
+			case NihongoNoTangoCli::EnumAnswer::KANJI: return rec.kanji;
+			case NihongoNoTangoCli::EnumAnswer::TRANSLATION: return rec.translation;
+			default: assert(false); break;
 		}
 	}
 
@@ -104,46 +113,31 @@ public:
 		for(size_t idx = 0; idx < rounds_max; ++ idx) {
 			const auto& item = _dic[idx];
 
-			switch(_cli.action.action().value) {
+			const String_t question = build_question(item);
+			String_t answer;
 
-				case NihongoNoTangoCli::EnumMethod::READ_KANA:
-					do_read(item, item.kana);
-					break;
-
-				case NihongoNoTangoCli::EnumMethod::READ_KANJI:
-					if(item.kanji.empty()) {
-						continue;
-					}
-					do_read(item, item.kanji);
-					break;
-
-				case NihongoNoTangoCli::EnumMethod::WRITE_KANA: {
-					printf("%s  (%s)\n", to_basic_string(item.kanji).c_str(), to_basic_string(item.translation).c_str());
-					fflush(stdout);
-					say(item.kana);
-
-					String_t output;
-					read_line(stdin, output, true);
-					if(_cli.katakana.presented()) {
-						output = filter_katakana(output);
-					}
-					while(output != item.kana) {
-						++cnt_mistakes;
-						printf("%s", TermColor::front(TermColor::RED));
-						printf("'%s'", to_basic_string(item.kana).c_str());
-						printf("\n%s", TermColor::reset());
-						say(item.kana);
-						read_line(stdin, output, true);
-					}
-
-				}
-					break;
-
-				default:
-					exit(-1);
-					break;
+			printf("%s", to_basic_string(question).c_str());
+			fflush(stdout);
+			if(_cli.play_audio.presented()) {
+				say(item);
 			}
 
+			read_line(stdin, answer, true);
+
+			if(_cli.action.action().value == NihongoNoTangoCli::EnumMethod::TEST) {
+				const String_t reference = build_reference(item);
+				
+				while(answer != reference) {
+					++cnt_mistakes;
+					printf("%s", TermColor::front(TermColor::RED));
+					printf("'%s'", to_basic_string(reference).c_str());
+					printf("\n%s", TermColor::reset());
+					if(_cli.play_audio.presented()) {
+						say(item);
+					}
+					read_line(stdin, answer, true);
+				}
+			}
 			++cnt_total;
 		}
 
@@ -210,6 +204,9 @@ private:
 			buf.push_back(ch);
 		}
 		result = to_u32_string(buf);
+		if(_cli.katakana_filter.presented()) {
+			result = filter_katakana(result);
+		}
 		return ch != EOF;
 	}
 
@@ -242,7 +239,8 @@ private:
 		return trim_right(trim_left(std::move(str), space), space);
 	}
 
-	void say(const String_t& to_say) const {
+	void say(const Record& rec) const {
+		const String_t to_say = rec.kanji.empty() ? rec.kana : rec.kanji;
 		std::string command("trans -b -p  :en :jpn \"");
 		command.append(to_basic_string(to_say));
 		command.append("\" >> /dev/null");
